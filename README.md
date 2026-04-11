@@ -24,7 +24,7 @@ Parses a public Google Form, lets you define percentage weights for each option,
 
 ## Features
 
-- **Dual Parser** — Extracts form structure via embedded JSON (`FB_PUBLIC_LOAD_DATA_`) with Selenium/BS4 fallback
+- **Pure JSON Parsing** — Extracts form structure via embedded JSON (`FB_PUBLIC_LOAD_DATA_`) using pure Python HTTP requests.
 - **Supported Question Types** — Multiple Choice, Checkboxes, Dropdowns, Linear Scales
 - **Live Progress** — NDJSON streaming with real-time success/fail counter
 - **Validation** — Blocks automation if any question's percentages don't sum to 100
@@ -38,7 +38,7 @@ Parses a public Google Form, lets you define percentage weights for each option,
 | Layer | Tools |
 |---|---|
 | Backend | Python, Flask, Requests |
-| Parsing | BeautifulSoup4, Selenium, Webdriver Manager |
+| Parsing | BeautifulSoup4, RegEx |
 | Frontend | Vanilla JS, CSS (dark theme), Bootstrap Icons |
 | Data | CSV export, NDJSON streaming |
 

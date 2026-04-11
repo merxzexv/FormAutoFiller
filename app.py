@@ -7,21 +7,8 @@ import io
 import re
 import json
 from flask import Flask, request, jsonify, render_template, send_file
-from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.chrome.options import Options
-from webdriver_manager.chrome import ChromeDriverManager
-from selenium.webdriver.common.by import By
 
 app = Flask(__name__)
-
-def get_driver():
-    chrome_options = Options()
-    chrome_options.add_argument("--headless")
-    chrome_options.add_argument("--no-sandbox")
-    chrome_options.add_argument("--disable-dev-shm-usage")
-    service = Service(ChromeDriverManager().install())
-    return webdriver.Chrome(service=service, options=chrome_options)
 
 def is_signin_required(html):
     """Check if the form MANDATORILY requires Google sign-in."""
@@ -63,83 +50,6 @@ def extract_hidden_fields(soup):
             hidden[name] = value
     return hidden
 
-def parse_questions(html, soup):
-    """Extract all questions using a hybrid approach: JSON first, then BeautifulSoup fallback."""
-    questions = []
-    
-    # --- 1. Try JSON extraction for multi-page support ---
-    results = re.search(r'var FB_PUBLIC_LOAD_DATA_ = (.*?);', html, re.DOTALL)
-    if results:
-        try:
-            data = json.loads(results.group(1))
-            questions_root = data[1][1]
-            for q in questions_root:
-                try:
-                    q_text = q[1]
-                    q_type_id = q[3]
-                    # Supported: 3(Radio), 4(Dropdown), 5(Checkbox), 7(Linear), 9(Date), 10(Time)
-                    if q_type_id not in [3, 4, 5, 7]: continue
-                    
-                    entry_data = q[4][0]
-                    entry_id = f"entry.{entry_data[0]}"
-                    
-                    new_q = {'text': q_text, 'entry_id': entry_id}
-                    
-                    if q_type_id in [3, 4, 5]:
-                        new_q['type'] = 'checkbox' if q_type_id == 5 else 'radio'
-                        options = [opt[0] for opt in entry_data[1] if opt[0]]
-                        if not options: continue
-                        new_q['options'] = options
-                    elif q_type_id == 7:
-                        new_q['type'] = 'linear'
-                        scale_data = entry_data[10]
-                        new_q['min'] = int(scale_data[0])
-                        new_q['max'] = int(scale_data[1])
-                        new_q['left_label'] = scale_data[2] if len(scale_data) > 2 else ""
-                        new_q['right_label'] = scale_data[3] if len(scale_data) > 3 else ""
-                    
-                    questions.append(new_q)
-                except: continue
-        except: pass
-
-    # --- 2. Fallback to BeautifulSoup if JSON failed or found nothing ---
-    if not questions:
-        for item in soup.find_all('div', role='listitem'):
-            try:
-                q = {}
-                heading = item.find('div', class_='HoXoMd')
-                if not heading: continue
-                q['text'] = heading.get_text(strip=True)
-                
-                radio_group = item.find('div', role='radiogroup')
-                linear_group = item.find('div', class_='BpKDyb')
-                checkbox_group = item.find('div', role='group', attrs={'aria-multiselectable': 'true'})
-                
-                if radio_group:
-                    q['type'] = 'radio'
-                    q['options'] = [span.get_text(strip=True) for span in radio_group.find_all('span', class_='aDTYNe')]
-                elif linear_group:
-                    q['type'] = 'linear'
-                    scale_items = linear_group.find_all('label', class_='T5pZmf')
-                    nums = [int(v.get_text(strip=True)) for v in [lbl.find('div', class_='Zki2Ve') for lbl in scale_items] if v]
-                    q['min'], q['max'] = min(nums), max(nums)
-                    l_lbl = linear_group.find('div', jsname='NfjK7')
-                    r_lbl = linear_group.find('div', jsname='jq1lEb')
-                    q['left_label'] = l_lbl.get_text(strip=True) if l_lbl else ''
-                    q['right_label'] = r_lbl.get_text(strip=True) if r_lbl else ''
-                elif checkbox_group:
-                    q['type'] = 'checkbox'
-                    q['options'] = [span.get_text(strip=True) for span in checkbox_group.find_all('span', class_='aDTYNe')]
-                else: continue
-                
-                entry_input = item.find('input', attrs={'name': re.compile(r'entry\.\d+')}) or item.find('input', attrs={'type': 'hidden', 'name': re.compile(r'entry\.\d+')})
-                if entry_input:
-                    q['entry_id'] = entry_input['name']
-                    questions.append(q)
-            except: continue
-            
-    return questions
-
 @app.route('/')
 def index():
     return render_template('index.html')
@@ -154,15 +64,12 @@ def parse_form():
         return jsonify({'error': 'No URL provided'}), 400
     
     def generate_questions():
-        driver = None
         try:
-            driver = get_driver()
-            driver.get(form_url)
-            time.sleep(2)
-            
-            # 1. Metadata yield
-            html = driver.page_source
+            response = requests.get(form_url)
+            response.raise_for_status()
+            html = response.text
             soup = BeautifulSoup(html, 'html.parser')
+            
             form_tag = soup.find('form', id='mG61Hd')
             action_url = form_tag.get('action') if form_tag else None
             hidden_fields = extract_hidden_fields(soup)
@@ -175,45 +82,20 @@ def parse_form():
                 'is_closed': is_form_closed(html)
             }) + "\n"
 
-            # 2. X-Ray JSON Parsing (All pages instantly)
-            json_pages = []
-            try:
-                raw_data = driver.execute_script("return typeof FB_PUBLIC_LOAD_DATA_ !== 'undefined' ? FB_PUBLIC_LOAD_DATA_ : null;")
-                if raw_data:
-                    json_pages = extract_questions_from_json(raw_data)
-                    for page in json_pages:
-                        yield json.dumps({'type': 'questions', 'data': page}) + "\n"
-            except: pass
-
-            # 3. If JSON failed, use Selenium Physical Crawl as fallback
-            if not json_pages:
-                seen_ids = set()
-                for i in range(20):
-                    soup = BeautifulSoup(driver.page_source, 'html.parser')
-                    dom_qs = parse_questions(driver.page_source, soup)
-                    new_qs = [q for q in dom_qs if q['entry_id'] not in seen_ids]
-                    for q in new_qs: seen_ids.add(q['entry_id'])
-                    
-                    if new_qs:
-                        yield json.dumps({'type': 'questions', 'data': new_qs}) + "\n"
-                    
-                    # Try next page
-                    try:
-                        next_selectors = ["//span[text()='Next' or text()='NEXT']", "//div[contains(@jsname, 'OCpkoe')]"]
-                        found = False
-                        for sel in next_selectors:
-                            btn = driver.find_element(By.XPATH, sel)
-                            if btn.is_displayed():
-                                driver.execute_script("arguments[0].click();", btn)
-                                found = True
-                                time.sleep(2)
-                                break
-                        if not found: break
-                    except: break
+            # Parse the JSON structure for multi-page support without a browser
+            # We look for the array starting with [ and ending with ] specifically to avoid 
+            # truncation at internal semicolons in question text.
+            results = re.search(r'var FB_PUBLIC_LOAD_DATA_ = (\[.*?\]);', html, re.DOTALL)
+            if results:
+                raw_data = json.loads(results.group(1))
+                json_pages = extract_questions_from_json(raw_data)
+                for page in json_pages:
+                    yield json.dumps({'type': 'questions', 'data': page}) + "\n"
+            else:
+                yield json.dumps({'type': 'error', 'message': 'Failed to locate form structure.'}) + "\n"
+                
         except Exception as e:
             yield json.dumps({'type': 'error', 'message': str(e)}) + "\n"
-        finally:
-            if driver: driver.quit()
 
     return Response(stream_with_context(generate_questions()), mimetype='application/x-ndjson')
 
