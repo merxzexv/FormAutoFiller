@@ -10,6 +10,13 @@ from flask import Flask, request, jsonify, render_template, send_file
 
 app = Flask(__name__)
 
+# --- CONFIGURATION TOGGLE ---
+# Set PRODUCTION_MODE = False for development (enables hot-reloading and detailed errors)
+# Set PRODUCTION_MODE = True for production (disables debug mode for security and performance)
+PRODUCTION_MODE = True
+# ----------------------------
+
+
 def is_signin_required(html):
     """Check if the form MANDATORILY requires Google sign-in."""
     soup = BeautifulSoup(html, 'html.parser')
@@ -309,4 +316,5 @@ def download_csv(job_id):
     return Response(content, mimetype="text/csv", headers={"Content-disposition": f"attachment; filename={filename}"})
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    # When PRODUCTION_MODE is True, debug is False
+    app.run(debug=not PRODUCTION_MODE)
