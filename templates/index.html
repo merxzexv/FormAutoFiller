@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Google Form Auto-Filler</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+</head>
+<body>
+    <div class="viewport">
+        <div class="page-container" id="pageContainer">
+            <!-- SCREEN 1: HOME -->
+            <section class="screen home-screen" id="homeScreen">
+                <button class="info-icon" id="infoBtn"><i class="bi bi-question"></i></button>
+                <h1>Form Auto-Filler</h1>
+                <div class="form-group">
+                    <label style="display:none">Google Form URL</label>
+                    <input type="text" id="formUrl" placeholder="Enter public form URL">
+                    <button id="parseBtn" class="primary-btn">Parse Form</button>
+                    <div id="loading" style="display:none;">
+                        <div class="spinner"></div>
+                        <p style="margin-top:10px">Analyzing form structure...</p>
+                    </div>
+                </div>
+                <div id="error" class="error" style="display:none; margin-top:20px;"></div>
+                <div id="signinWarning" class="warning" style="display:none; margin-top:20px;"></div>
+            </section>
+
+            <!-- SCREEN 2: SELECTION -->
+            <section class="screen selection-screen" id="selectionScreen">
+                <button class="back-btn" onclick="goToPage(0)"><i class="bi bi-chevron-left"></i></button>
+                <div class="content-wrapper" style="max-width:500px; text-align:center;">
+                    <h2 style="margin-bottom:16px;">Choose Fill Strategy</h2>
+                    <p style="color:var(--on-surface-low); margin-bottom:40px;">Select how you want to initialize the response weights.</p>
+                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:20px;">
+                        <button class="primary-btn" onclick="selectStrategy('random')" style="padding: 32px 16px; display:flex; flex-direction:column; gap:12px; height:auto;">
+                            <i class="bi bi-shuffle" style="font-size:24px;"></i>
+                            <span>Random Fill</span>
+                        </button>
+                        <button class="primary-btn" onclick="selectStrategy('weight')" style="padding: 32px 16px; display:flex; flex-direction:column; gap:12px; height:auto;">
+                            <i class="bi bi-pie-chart" style="font-size:24px;"></i>
+                            <span>Weight Fill</span>
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- SCREEN 3: CONFIGURATION -->
+            <section class="screen config-screen" id="configScreen">
+                <button class="back-btn" onclick="goToPage(1)"><i class="bi bi-chevron-left"></i></button>
+                <div class="content-wrapper">
+                    <div class="screen-header">
+                        <div class="title-group">
+                            <h2>Configure Distribution</h2>
+                            <p style="font-size:13px; color:var(--on-surface-low);">Define probability weights for each question option.</p>
+                        </div>
+                        
+                        <div class="pagination-controls" style="display:flex; gap:16px; align-items:center; justify-content:center;">
+                            <button id="prevPage" class="primary-btn" style="padding: 10px 20px; background:transparent; border:1px solid var(--border); color:var(--on-surface);" disabled>Back</button>
+                            <span id="pageIndicator" style="font-size:13px; font-weight:600; min-width:80px;">Page 1</span>
+                            <button id="nextPage" class="primary-btn" style="padding: 10px 20px; background:transparent; border:1px solid var(--border); color:var(--on-surface);" disabled>Next</button>
+                        </div>
+
+                        <div style="width:100%; text-align:left; display:flex; flex-direction:column; gap:6px;">
+                            <p style="font-size:12px; color:var(--on-surface-low);"><strong style="color:var(--on-surface);">Note:</strong> The sum of all percentages must equal 100.</p>
+                            <p style="font-size:12px; color:var(--on-surface-low);">Results may vary for small samples. Accuracy improves with more responses.</p>
+                        </div>
+                    </div>
+                    
+                    <div id="questionsContainer"></div>
+
+                    <div style="text-align:center; margin-top:40px;">
+                        <button class="primary-btn" id="moveToAutomationBtn" onclick="goToPage(3)" style="padding: 18px 60px;">Next</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- SCREEN 4: AUTOMATION & RESULTS -->
+            <section class="screen execution-screen" id="executionScreen">
+                <button class="back-btn" onclick="goToPage(2)"><i class="bi bi-chevron-left"></i></button>
+                <div class="content-wrapper" style="max-width:500px; text-align:center;">
+                    <div id="inputPhase">
+                        <h2 style="margin-bottom:32px;">Finalize Automation</h2>
+                        <div class="form-group" style="margin-bottom:24px;">
+                            <label style="font-size:11px; color:var(--on-surface-low); text-transform:uppercase; font-weight:600;">Responses to Generate</label>
+                            <input type="number" id="numResponses" value="10" min="1" step="1">
+                            <button id="fillFormBtn" class="primary-btn">Start Automation</button>
+                        </div>
+                    </div>
+
+                    <div id="progressPhase" style="display:none;">
+                        <h2 id="progressTitle">Automating...</h2>
+                        <p id="progressText" style="color: var(--on-surface-low); margin-bottom: 8px;">Preparing submission batch</p>
+                        <div class="progress-bar-bg">
+                            <div id="progressBar" class="progress-bar-fill"></div>
+                        </div>
+                        <div class="spinner" id="progressSpinner" style="margin-top:20px;"></div>
+                    </div>
+
+                    <div id="resultPhase" style="display:none;">
+                        <h2 style="margin-bottom:24px;">Task Completed</h2>
+                        <div id="summaryContent" class="summary-box" style="margin-bottom:32px;"></div>
+                        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:16px; margin-bottom:20px;">
+                            <button id="downloadResponsesBtn" class="primary-btn">Export Responses</button>
+                            <button id="downloadStatsBtn" class="primary-btn">Export Statistics</button>
+                        </div>
+                        <button class="primary-btn" onclick="resetApp()" style="width:100%; background:transparent; border:1px solid var(--border);">Fill a New Form</button>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </div>
+
+
+    <!-- Info Modal -->
+    <div class="modal" id="infoModal">
+        <div class="modal-content" style="max-width: 550px;">
+            <h2 style="margin-bottom: 24px;">How it Works</h2>
+            
+            <div class="info-steps" style="display: flex; flex-direction: column; gap: 20px; text-align: left;">
+                <div class="info-step" style="display: flex; gap: 16px;">
+                    <span style="color: var(--primary); font-weight: 700; font-size: 18px;">01</span>
+                    <div>
+                        <p style="font-weight: 600; color: var(--on-surface); margin-bottom: 4px;">Paste Link</p>
+                        <p style="font-size: 13px; color: var(--on-surface-low);">Enter a public Google Form URL that doesn't require a login.</p>
+                    </div>
+                </div>
+
+                <div class="info-step" style="display: flex; gap: 16px;">
+                    <span style="color: var(--primary); font-weight: 700; font-size: 18px;">02</span>
+                    <div>
+                        <p style="font-weight: 600; color: var(--on-surface); margin-bottom: 4px;">Configure Distribution</p>
+                        <p style="font-size: 13px; color: var(--on-surface-low);">Assign custom weights to options to bias the generated results.</p>
+                    </div>
+                </div>
+
+                <div class="info-step" style="display: flex; gap: 16px;">
+                    <span style="color: var(--primary); font-weight: 700; font-size: 18px;">03</span>
+                    <div>
+                        <p style="font-weight: 600; color: var(--on-surface); margin-bottom: 4px;">Set Range</p>
+                        <p style="font-size: 13px; color: var(--on-surface-low);">Specify the number of responses you want to generate.</p>
+                    </div>
+                </div>
+
+                <div class="info-step" style="display: flex; gap: 16px;">
+                    <span style="color: var(--primary); font-weight: 700; font-size: 18px;">04</span>
+                    <div>
+                        <p style="font-weight: 600; color: var(--on-surface); margin-bottom: 4px;">Execute & Export</p>
+                        <p style="font-size: 13px; color: var(--on-surface-low);">Run the automation and download both raw submission data and statistical reports as CSV.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div style="margin-top: 32px; padding-top: 24px; border-top: 1px solid var(--border);">
+                <p style="font-size: 11px; color: var(--on-surface-low); text-transform: uppercase; letter-spacing: 0.1em; font-weight: 700; margin-bottom: 16px;">Supported Question Types</p>
+                <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+                    <span style="background: var(--surface); border: 1px solid var(--border); padding: 6px 12px; border-radius: 20px; font-size: 12px; color: var(--on-surface-low);">Multiple Choice</span>
+                    <span style="background: var(--surface); border: 1px solid var(--border); padding: 6px 12px; border-radius: 20px; font-size: 12px; color: var(--on-surface-low);">Checkboxes</span>
+                    <span style="background: var(--surface); border: 1px solid var(--border); padding: 6px 12px; border-radius: 20px; font-size: 12px; color: var(--on-surface-low);">Dropdowns</span>
+                    <span style="background: var(--surface); border: 1px solid var(--border); padding: 6px 12px; border-radius: 20px; font-size: 12px; color: var(--on-surface-low);">Linear Scales</span>
+                </div>
+                <p style="font-size: 11px; color: var(--on-surface-low); margin-top: 12px; line-height: 1.5;">* Text inputs and other complex fields are skipped to maintain distribution accuracy.</p>
+            </div>
+
+            <button class="primary-btn close-modal" id="closeModal" style="margin-top: 32px; width: 100%;">Got it</button>
+        </div>
+    </div>
+
+    <script src="/static/script.js?v=4"></script>
+</body>
+</html>
