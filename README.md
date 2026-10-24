@@ -14,20 +14,22 @@ Parses a public Google Form, lets you define percentage weights for each option,
 2. **Choose Strategy** — Pick how to initialize weights:
    - **Random Fill** — Random percentages summing to 100% per question.
    - **Weight Fill** — Equal split across all options (e.g. 4 options → 25% each).
-3. **Configure Distribution** — Fine-tune percentages per option. Each question's options must sum to exactly 100%.
+3. **Configure Distribution** — Fine-tune percentages per option with automatic real-time rebalancing to 100%.
 4. **Set Responses** — Enter the number of submissions to generate.
 5. **Run & Export** — Watch live progress, then download:
    - `responses.csv` — raw per-submission data
    - `statistics.csv` — option counts and percentages per question
+   - `*_schema.json` — complete form structure (title, link, description, question entries, types, requirements, and options)
 
 ---
 
 ## Features
 
 - **Pure JSON Parsing** — Extracts form structure via embedded JSON (`FB_PUBLIC_LOAD_DATA_`) using pure Python HTTP requests.
-- **Supported Question Types** — Multiple Choice, Checkboxes, Dropdowns, Linear Scales
+- **Form Schema Export** — Download complete form metadata, question entries, labels, types, requirements, and options as formatted JSON.
+- **Supported Question Types** — Short Answer, Paragraph, Multiple Choice, Checkboxes, Dropdowns, Linear Scales
 - **Live Progress** — NDJSON streaming with real-time success/fail counter
-- **Validation** — Blocks automation if any question's percentages don't sum to 100
+- **Auto Percentage Balancing** — Real-time proportional percentage distribution across options ensuring a continuous 100% total without blocking automation.
 - **4-Step Wizard UI** — Sliding screen transitions; fully responsive across all device sizes
 - **Bootstrap Icons** — Clean icon-based navigation (back chevron, help button)
 

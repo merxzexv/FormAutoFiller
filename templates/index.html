@@ -9,9 +9,14 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/static/style.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
     <div class="viewport">
+        <!-- Global Toasts -->
+        <div id="error" class="error toast-message" style="display:none;"></div>
+        <div id="signinWarning" class="warning toast-message" style="display:none;"></div>
+        
         <div class="page-container" id="pageContainer">
             <!-- SCREEN 1: HOME -->
             <section class="screen home-screen" id="homeScreen">
@@ -26,8 +31,6 @@
                         <p style="margin-top:10px">Analyzing form structure...</p>
                     </div>
                 </div>
-                <div id="error" class="error" style="display:none; margin-top:20px;"></div>
-                <div id="signinWarning" class="warning" style="display:none; margin-top:20px;"></div>
             </section>
 
             <!-- SCREEN 2: SELECTION -->
@@ -53,21 +56,35 @@
             <section class="screen config-screen" id="configScreen">
                 <button class="back-btn" onclick="goToPage(1)"><i class="bi bi-chevron-left"></i></button>
                 <div class="content-wrapper">
-                    <div class="screen-header">
-                        <div class="title-group">
-                            <h2>Configure Distribution</h2>
-                            <p style="font-size:13px; color:var(--on-surface-low);">Define probability weights for each question option.</p>
+                    <!-- Screen 3 Header -->
+                    <div style="width:100%; text-align: left; margin-bottom: 30px;">
+                        <!-- Form Title as Page Header -->
+                        <h1 id="formMainTitle" style="font-size: 28px; font-weight: 700; margin-bottom: 14px; color: var(--on-surface);">Google Form</h1>
+
+                        <!-- Below Form Title: Configure Distribution -->
+                        <div style="margin-bottom: 24px;">
+                            <h2 style="text-align:center; font-size: 20px; font-weight: 600; margin-bottom: 4px;">Configure Distribution</h2>
+                            <p style="text-align:center; font-size: 13px; color: var(--on-surface-low);">Define probability weights for each question option.</p>
                         </div>
                         
-                        <div class="pagination-controls" style="display:flex; gap:16px; align-items:center; justify-content:center;">
+                        <!-- Pagination Controls -->
+                        <div class="pagination-controls" style="display:flex; gap:16px; align-items:center; justify-content:center; margin-bottom: 24px;">
                             <button id="prevPage" class="primary-btn" style="padding: 10px 20px; background:transparent; border:1px solid var(--border); color:var(--on-surface);" disabled>Back</button>
-                            <span id="pageIndicator" style="font-size:13px; font-weight:600; min-width:80px;">Page 1</span>
+                            <span id="pageIndicator" style="font-size:13px; font-weight:600; min-width:80px; text-align:center;">Page 1</span>
                             <button id="nextPage" class="primary-btn" style="padding: 10px 20px; background:transparent; border:1px solid var(--border); color:var(--on-surface);" disabled>Next</button>
                         </div>
 
-                        <div style="width:100%; text-align:left; display:flex; flex-direction:column; gap:6px;">
-                            <p style="font-size:12px; color:var(--on-surface-low);"><strong style="color:var(--on-surface);">Note:</strong> The sum of all percentages must equal 100.</p>
+                        <!-- Note Text -->
+                        <div style="margin-bottom: 12px;">
+                            <p style="font-size:12px; color:var(--on-surface-low); margin-bottom:4px;"><strong style="color:var(--on-surface);">Note:</strong> The sum of all percentages must equal 100.</p>
                             <p style="font-size:12px; color:var(--on-surface-low);">Results may vary for small samples. Accuracy improves with more responses.</p>
+                        </div>
+
+                        <!-- Export Schema Button: Below and aligned to the text -->
+                        <div style="display:block; clear:both; margin-top: 10px;">
+                            <button id="downloadSchemaConfigBtn" class="primary-btn" type="button" style="padding: 10px 18px; font-size: 13px; background: transparent; border: 1px solid var(--border); color: var(--on-surface); display: inline-flex; align-items: center; gap: 8px; cursor: pointer;">
+                                <i class="bi bi-file-earmark-code"></i> Export Form Schema (JSON)
+                            </button>
                         </div>
                     </div>
                     
@@ -82,17 +99,22 @@
             <!-- SCREEN 4: AUTOMATION & RESULTS -->
             <section class="screen execution-screen" id="executionScreen">
                 <button class="back-btn" onclick="goToPage(2)"><i class="bi bi-chevron-left"></i></button>
-                <div class="content-wrapper" style="max-width:500px; text-align:center;">
+                <div class="content-wrapper" style="max-width:700px; text-align:center; margin: auto;">
                     <div id="inputPhase">
                         <h2 style="margin-bottom:32px;">Finalize Automation</h2>
-                        <div class="form-group" style="margin-bottom:24px;">
+                        <div class="form-group" style="margin-bottom:24px; max-width: 500px; margin-left: auto; margin-right: auto;">
                             <label style="font-size:11px; color:var(--on-surface-low); text-transform:uppercase; font-weight:600;">Responses to Generate</label>
                             <input type="number" id="numResponses" value="10" min="1" step="1">
                             <button id="fillFormBtn" class="primary-btn">Start Automation</button>
+                            <div style="margin-top:16px;">
+                                <button id="downloadSchemaInputBtn" type="button" style="background:none; border:none; color:var(--primary); font-size:13px; cursor:pointer; text-decoration:underline; display:inline-flex; align-items:center; gap:6px;">
+                                    <i class="bi bi-file-earmark-code"></i> Download Form Schema (JSON)
+                                </button>
+                            </div>
                         </div>
                     </div>
 
-                    <div id="progressPhase" style="display:none;">
+                    <div id="progressPhase" style="display:none; max-width: 500px; margin: 0 auto;">
                         <h2 id="progressTitle">Automating...</h2>
                         <p id="progressText" style="color: var(--on-surface-low); margin-bottom: 8px;">Preparing submission batch</p>
                         <div class="progress-bar-bg">
@@ -101,12 +123,21 @@
                         <div class="spinner" id="progressSpinner" style="margin-top:20px;"></div>
                     </div>
 
-                    <div id="resultPhase" style="display:none;">
-                        <h2 style="margin-bottom:24px;">Task Completed</h2>
+                    <div id="resultPhase" style="display:none; text-align: left;">
+                        <h2 style="margin-bottom:24px; text-align: center;">Task Completed</h2>
+                        
+                        <!-- Dashboard Visualizations -->
+                        <div id="globalStatsContainer" style="margin-bottom:24px; max-width: 400px; margin-left: auto; margin-right: auto;">
+                            <canvas id="globalStatsChart" height="200"></canvas>
+                        </div>
+                        
+                        <div id="dashboardContainer" style="margin-bottom:32px; display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 24px;"></div>
+
                         <div id="summaryContent" class="summary-box" style="margin-bottom:32px;"></div>
-                        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:16px; margin-bottom:20px;">
+                        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap:14px; margin-bottom:20px; max-width: 550px; margin-left: auto; margin-right: auto;">
                             <button id="downloadResponsesBtn" class="primary-btn">Export Responses</button>
                             <button id="downloadStatsBtn" class="primary-btn">Export Statistics</button>
+                            <button id="downloadSchemaResultBtn" class="primary-btn" style="background:transparent; border:1px solid var(--border); color:var(--on-surface);"><i class="bi bi-file-earmark-code"></i> Form Schema</button>
                         </div>
                         <button class="primary-btn" onclick="resetApp()" style="width:100%; background:transparent; border:1px solid var(--border);">Fill a New Form</button>
                     </div>
@@ -163,13 +194,68 @@
                     <span style="background: var(--surface); border: 1px solid var(--border); padding: 6px 12px; border-radius: 20px; font-size: 12px; color: var(--on-surface-low);">Dropdowns</span>
                     <span style="background: var(--surface); border: 1px solid var(--border); padding: 6px 12px; border-radius: 20px; font-size: 12px; color: var(--on-surface-low);">Linear Scales</span>
                 </div>
-                <p style="font-size: 11px; color: var(--on-surface-low); margin-top: 12px; line-height: 1.5;">* Text inputs and other complex fields are skipped to maintain distribution accuracy.</p>
+                <p style="font-size: 11px; color: var(--on-surface-low); margin-top: 12px; line-height: 1.5;">* Text inputs and other unsupported fields can be configured by manually adding custom responses.</p>
             </div>
 
             <button class="primary-btn close-modal" id="closeModal" style="margin-top: 32px; width: 100%;">Got it</button>
         </div>
     </div>
 
-    <script src="/static/script.js?v=4"></script>
+    <!-- Add Response Modal -->
+    <div class="modal" id="addResponseModal">
+        <div class="modal-content" style="max-width: 400px; text-align: left;">
+            <h2 style="margin-bottom: 24px;">Add Custom Response</h2>
+            
+            <div class="form-group" style="margin-bottom: 16px;">
+                <label>Response Type</label>
+                <div style="display: flex; gap: 8px;">
+                    <button class="type-select-btn active" data-type="text" style="flex: 1; padding: 10px; border: 1px solid var(--primary); background: transparent; color: var(--on-surface); border-radius: 8px; cursor: pointer; font-size: 13px;">Static Text</button>
+                    <button class="type-select-btn" data-type="number" style="flex: 1; padding: 10px; border: 1px solid var(--border); background: transparent; color: var(--on-surface); border-radius: 8px; cursor: pointer; font-size: 13px;">Number Range</button>
+                    <button class="type-select-btn" data-type="date" style="flex: 1; padding: 10px; border: 1px solid var(--border); background: transparent; color: var(--on-surface); border-radius: 8px; cursor: pointer; font-size: 13px;">Date Range</button>
+                </div>
+            </div>
+
+            <!-- Static Text Settings -->
+            <div id="staticTextSettings" class="response-settings-group">
+                <div class="form-group">
+                    <label>Text Value</label>
+                    <input type="text" id="staticTextValue" placeholder="Enter static text..." style="width: 100%; padding: 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--on-surface);">
+                </div>
+            </div>
+
+            <!-- Date Range Settings -->
+            <div id="dateRangeSettings" class="response-settings-group" style="display: none;">
+                <div class="form-group" style="margin-bottom: 12px;">
+                    <label>Start Date</label>
+                    <input type="date" id="dateRangeStart" style="width: 100%; padding: 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--on-surface);">
+                </div>
+                <div class="form-group">
+                    <label>End Date</label>
+                    <input type="date" id="dateRangeEnd" style="width: 100%; padding: 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--on-surface);">
+                </div>
+            </div>
+
+            <!-- Number Range Settings -->
+            <div id="numberRangeSettings" class="response-settings-group" style="display: none;">
+                <div class="form-group" style="margin-bottom: 12px;">
+                    <label>Minimum Value</label>
+                    <input type="number" id="numberRangeMin" style="width: 100%; padding: 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--on-surface);">
+                </div>
+                <div class="form-group">
+                    <label>Maximum Value</label>
+                    <input type="number" id="numberRangeMax" style="width: 100%; padding: 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--on-surface);">
+                </div>
+            </div>
+            <div id="addResponseError" class="error" style="display: none; margin-top: 16px;"></div>
+
+            <div style="display: flex; gap: 12px; margin-top: 24px;">
+                <button class="primary-btn" id="cancelAddResponseBtn" style="background: transparent; border: 1px solid var(--border); color: var(--on-surface); flex: 1;">Cancel</button>
+                <button class="primary-btn" id="confirmAddResponseBtn" style="flex: 1;">Add</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/ui.js"></script>
+    <script src="/static/script.js"></script>
 </body>
 </html>

@@ -168,14 +168,14 @@ input:focus {
 }
 
 /* Configuration Screen */
-.config-screen {
+.config-screen, .execution-screen {
     justify-content: flex-start;
 }
 
 .content-wrapper {
     width: 100%;
     max-width: 1000px;
-    margin: 0 auto;
+    margin: auto;
 }
 
 .screen-header {
@@ -223,10 +223,24 @@ input:focus {
 }
 
 .option-percent input {
-    width: 56px;
-    padding: 8px;
+    width: 76px;
+    padding: 8px 6px;
     text-align: center;
     background: var(--surface);
+    font-size: 14px;
+    font-weight: 500;
+}
+
+/* Hide number spinner / up-down buttons on option percentage inputs */
+.option-percent input::-webkit-outer-spin-button,
+.option-percent input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.option-percent input[type=number] {
+    -moz-appearance: textfield;
+    appearance: textfield;
 }
 
 .option-percent span {
@@ -311,8 +325,20 @@ input:focus {
     margin-bottom: 16px;
     width: 100%;
 }
-.error { border: 1px solid var(--error); color: var(--error); }
-.warning { border: 1px solid var(--warning); color: var(--warning); }
+.error { border: 1px solid var(--error); color: var(--error); background: rgba(255,85,85,0.1); }
+.warning { border: 1px solid var(--warning); color: var(--warning); background: rgba(255,204,0,0.1); }
+
+.toast-message {
+    position: fixed;
+    top: 40px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 9999;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+    background: var(--surface-variant);
+    backdrop-filter: blur(8px);
+    text-align: center;
+}
 
 #loading {
     margin-top: 20px;

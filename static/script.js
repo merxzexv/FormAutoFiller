@@ -1,19 +1,11 @@
-// Navigation
-window.goToPage = function(index) {
-    const container = document.getElementById('pageContainer');
-    container.style.transform = `translateX(-${index * 25}%)`;
-    if (index === 2) resetExecutionPhase(); // Reset when going back to config
-};
-
-function resetExecutionPhase() {
-    document.getElementById('inputPhase').style.display = 'block';
-    document.getElementById('progressPhase').style.display = 'none';
-    document.getElementById('resultPhase').style.display = 'none';
-    document.getElementById('progressBar').style.width = '0%';
-}
+// script.js - Application Logic, State Management, and API
 
 window.resetApp = function() {
     window.location.reload();
+};
+
+window.roundToTwo = function(num) {
+    return Math.round((num + Number.EPSILON) * 100) / 100;
 };
 
 window.selectStrategy = function(strategy) {
@@ -25,41 +17,42 @@ window.selectStrategy = function(strategy) {
         const optWeights = {};
 
         let keys = [];
-        if (q.type === 'radio' || q.type === 'checkbox') {
-            keys = q.options.slice();
+        if (q.type === 'radio' || q.type === 'checkbox' || q.type === 'text') {
+            keys = (q.options || []).slice();
         } else if (q.type === 'linear') {
             for (let v = q.min; v <= q.max; v++) keys.push(String(v));
         }
 
         const count = keys.length;
+        if (count === 0) return;
+
         if (strategy === 'random') {
-            // Generate random values summing to 100
             let raws = keys.map(() => Math.random());
             const total = raws.reduce((a, b) => a + b, 0);
-            let percents = raws.map(r => Math.floor((r / total) * 100));
-            // Fix rounding so they sum to exactly 100
-            let diff = 100 - percents.reduce((a, b) => a + b, 0);
-            percents[0] += diff;
+            let percents = raws.map(r => window.roundToTwo((r / total) * 100));
+            let diff = window.roundToTwo(100 - percents.reduce((a, b) => a + b, 0));
+            percents[0] = window.roundToTwo(percents[0] + diff);
             keys.forEach((k, i) => { optWeights[k] = percents[i]; });
         } else {
-            // Equal split
-            const base = Math.floor(100 / count);
-            const rem = 100 - base * count;
-            keys.forEach((k, i) => { optWeights[k] = base + (i === 0 ? rem : 0); });
+            let base = window.roundToTwo(100 / count);
+            let percents = keys.map(() => base);
+            let diff = window.roundToTwo(100 - percents.reduce((a, b) => a + b, 0));
+            percents[0] = window.roundToTwo(percents[0] + diff);
+            keys.forEach((k, i) => { optWeights[k] = percents[i]; });
         }
 
         window.weightsByEntryId[entryId] = optWeights;
     });
 
-    showPage(0);
-    goToPage(2);
+    const titleEl = document.getElementById('formMainTitle');
+    if (titleEl && window.formMeta && window.formMeta.form_title) {
+        titleEl.innerText = window.formMeta.form_title;
+    }
+
+    if (typeof showPage === 'function') showPage(0);
+    if (typeof goToPage === 'function') goToPage(2);
 };
 
-// Modal Logic
-document.getElementById('infoBtn').onclick = () => document.getElementById('infoModal').classList.add('active');
-document.getElementById('closeModal').onclick = () => document.getElementById('infoModal').classList.remove('active');
-
-// Parsing Logic
 document.getElementById('parseBtn').addEventListener('click', async () => {
     const url = document.getElementById('formUrl').value.trim();
     if (!url) {
@@ -71,7 +64,6 @@ document.getElementById('parseBtn').addEventListener('click', async () => {
     hideError();
     hideWarning();
     
-    // Reset global state
     window.formMeta = { questions: [], action_url: '', hidden_fields: {} };
     window.formPages = [];
     window.currentPageIndex = 0;
@@ -115,7 +107,7 @@ document.getElementById('parseBtn').addEventListener('click', async () => {
     }
 });
 
-function handleParseChunk(part) {
+window.handleParseChunk = function(part) {
     if (part.type === 'metadata') {
         if (part.requires_signin) {
             showWarning('This form requires Google sign-in.');
@@ -127,39 +119,47 @@ function handleParseChunk(part) {
         }
         window.formMeta.action_url = part.action_url;
         window.formMeta.hidden_fields = part.hidden_fields;
+        window.formMeta.form_url = part.form_url || document.getElementById('formUrl').value.trim();
+        window.formMeta.form_title = part.form_title || 'Google Form';
+        window.formMeta.form_description = part.form_description || '';
+
+        const titleEl = document.getElementById('formMainTitle');
+        if (titleEl && part.form_title) {
+            titleEl.innerText = part.form_title;
+        }
     } else if (part.type === 'questions') {
         window.formMeta.questions.push(...part.data);
         window.formPages.push(part.data);
         
         if (window.formPages.length === 1) {
-            goToPage(1); // Move to Selection screen
+            goToPage(1); 
         }
         updatePaginationButtons();
     } else if (part.type === 'error') {
         showError(part.message);
     }
-}
+};
 
-function showPage(index) {
-    snapshotWeightsFromCurrentPage();
-    window.currentPageIndex = index;
-    const questions = window.formPages[index];
-    renderAdditionalQuestions(questions);
-    
-    document.getElementById('pageIndicator').innerText = `Page ${index + 1} of ${window.formPages.length}`;
-    updatePaginationButtons();
-}
-
-function snapshotWeightsFromCurrentPage() {
+window.snapshotWeightsFromCurrentPage = function() {
     const questions = window.formPages[window.currentPageIndex];
     if (!questions) return;
     for (const q of questions) {
         const card = document.querySelector(`.question-card[data-entry-id="${q.entry_id}"]`);
         if (!card) continue;
+
         const inputs = card.querySelectorAll('input[data-option]');
         const optWeights = { ...(window.weightsByEntryId[q.entry_id] || {}) };
+        
+        if (q.type === 'text') {
+            for (const k in optWeights) {
+                if (!q.options.includes(k)) delete optWeights[k];
+            }
+        }
+
         inputs.forEach(inp => {
             const opt = inp.getAttribute('data-option');
+            if (q.type === 'text' && !q.options.includes(opt)) return;
+            
             let weight = parseFloat(inp.value);
             if (isNaN(weight)) weight = 1;
             if (weight < 0) weight = 0;
@@ -167,90 +167,134 @@ function snapshotWeightsFromCurrentPage() {
         });
         window.weightsByEntryId[q.entry_id] = optWeights;
     }
-}
+};
 
-function updatePaginationButtons() {
-    const prevBtn = document.getElementById('prevPage');
-    const nextBtn = document.getElementById('nextPage');
-    const finalBtn = document.getElementById('moveToAutomationBtn');
-    
-    if (prevBtn && nextBtn) {
-        prevBtn.disabled = window.currentPageIndex <= 0;
-        nextBtn.disabled = window.currentPageIndex >= window.formPages.length - 1;
-    }
-
-    if (finalBtn) {
-        finalBtn.parentElement.style.display = (window.currentPageIndex === window.formPages.length - 1) ? 'block' : 'none';
-    }
-}
-
-document.getElementById('prevPage').addEventListener('click', () => {
-    if (window.currentPageIndex > 0) showPage(window.currentPageIndex - 1);
-});
-
-document.getElementById('nextPage').addEventListener('click', () => {
-    if (window.currentPageIndex < window.formPages.length - 1) showPage(window.currentPageIndex + 1);
-});
-
-function renderAdditionalQuestions(questions) {
-    const container = document.getElementById('questionsContainer');
-    container.innerHTML = '';
-    questions.forEach(q => {
-        const card = document.createElement('div');
-        card.className = 'question-card';
-        card.dataset.entryId = q.entry_id;
-        card.innerHTML = `<div class="question-text" style="font-weight:600; margin-bottom:16px;">${q.text}</div><div class="options-grid"></div>`;
-        
-        const grid = card.querySelector('.options-grid');
-        if (q.type === 'radio' || q.type === 'checkbox') {
-            q.options.forEach(opt => {
-                const w = defaultWeightForOption(q.entry_id, opt, q.options.length);
-                const optDiv = document.createElement('div');
-                optDiv.className = 'option-item';
-                optDiv.innerHTML = `<span>${opt}</span><div class="option-percent"><input type="number" value="${w}" min="0" max="100" data-option="${opt}"><span>%</span></div>`;
-                grid.appendChild(optDiv);
-            });
-        } else if (q.type === 'linear') {
-            const count = q.max - q.min + 1;
-            for (let val = q.min; val <= q.max; val++) {
-                let label = val;
-                if (val === q.min && q.left_label) label = `${q.left_label} (${val})`;
-                if (val === q.max && q.right_label) label = `${q.right_label} (${val})`;
-                const w = defaultWeightForOption(q.entry_id, String(val), count);
-                const optDiv = document.createElement('div');
-                optDiv.className = 'option-item';
-                optDiv.innerHTML = `<span>${label}</span><div class="option-percent"><input type="number" value="${w}" min="0" max="100" data-option="${val}"><span>%</span></div>`;
-                grid.appendChild(optDiv);
-            }
-        }
-        container.appendChild(card);
-    });
-}
-
-function defaultWeightForOption(entryId, opt, count) {
+window.defaultWeightForOption = function(entryId, opt, count) {
     const stored = window.weightsByEntryId[entryId];
     if (stored && Object.prototype.hasOwnProperty.call(stored, opt)) return stored[opt];
-    // Default: equal split summing to 100
-    return count ? Math.floor(100 / count) : 0;
-}
+    return count ? window.roundToTwo(100 / count) : 0;
+};
 
-function validatePercentages() {
-    const questions = window.formMeta.questions;
-    const issues = [];
-    for (const q of questions) {
-        const card = document.querySelector(`.question-card[data-entry-id="${q.entry_id}"]`);
-        if (!card) continue;
-        const inputs = card.querySelectorAll('input[data-option]');
-        let sum = 0;
-        inputs.forEach(inp => { sum += parseFloat(inp.value) || 0; });
-        if (Math.round(sum) !== 100) {
-            issues.push(`"${q.text.slice(0, 40)}..." sums to ${sum}% (must be 100%).`);
-        }
+window.normalizeQuestionWeights = function(entryId) {
+    const q = window.formMeta.questions.find(x => x.entry_id === entryId);
+    if (!q) return;
+
+    let keys = [];
+    if (q.type === 'radio' || q.type === 'checkbox' || q.type === 'text') {
+        keys = (q.options || []).slice();
+    } else if (q.type === 'linear') {
+        for (let v = q.min; v <= q.max; v++) keys.push(String(v));
     }
-    return issues;
-}
+    if (keys.length === 0) return;
 
-// Automation
+    if (!window.weightsByEntryId[entryId]) {
+        window.weightsByEntryId[entryId] = {};
+    }
+    const currentWeights = window.weightsByEntryId[entryId];
+
+    let currentVals = keys.map(k => Math.max(0, parseFloat(currentWeights[k]) || 0));
+    let total = currentVals.reduce((a, b) => a + b, 0);
+
+    let newWeights = [];
+    if (total > 0.0001) {
+        newWeights = currentVals.map(v => (v / total) * 100);
+    } else {
+        newWeights = keys.map(() => 100 / keys.length);
+    }
+
+    let rounded = newWeights.map(w => window.roundToTwo(w));
+    let diff = window.roundToTwo(100 - rounded.reduce((a, b) => a + b, 0));
+    if (diff !== 0 && rounded.length > 0) {
+        let maxIdx = 0;
+        for (let i = 1; i < newWeights.length; i++) {
+            if (newWeights[i] > newWeights[maxIdx]) maxIdx = i;
+        }
+        rounded[maxIdx] = window.roundToTwo(rounded[maxIdx] + diff);
+    }
+
+    keys.forEach((k, i) => {
+        currentWeights[k] = rounded[i];
+    });
+};
+
+window.handleOptionInputChange = function(input) {
+    const card = input.closest('.question-card');
+    if (!card) return;
+    const inputs = Array.from(card.querySelectorAll('input[data-option]'));
+    if (inputs.length <= 1) {
+        if (inputs.length === 1) input.value = 100;
+        if (typeof snapshotWeightsFromCurrentPage === 'function') snapshotWeightsFromCurrentPage();
+        return;
+    }
+
+    let val = parseFloat(input.value);
+    if (isNaN(val)) return;
+
+    if (val < 0) {
+        val = 0;
+        input.value = 0;
+    } else if (val > 100) {
+        val = 100;
+        input.value = 100;
+    }
+
+    const remainder = Math.max(0, 100 - val);
+    const otherInputs = inputs.filter(inp => inp !== input);
+    const otherVals = otherInputs.map(inp => Math.max(0, parseFloat(inp.value) || 0));
+    const sumOther = otherVals.reduce((a, b) => a + b, 0);
+
+    let fractions;
+    if (sumOther > 0.0001) {
+        fractions = otherVals.map(v => v / sumOther);
+    } else {
+        fractions = otherVals.map(() => 1 / otherInputs.length);
+    }
+
+    let targets = fractions.map(f => f * remainder);
+    let rounded = targets.map(t => window.roundToTwo(t));
+    let sumRounded = rounded.reduce((a, b) => a + b, 0);
+    let diff = window.roundToTwo(remainder - sumRounded);
+
+    if (diff !== 0 && rounded.length > 0) {
+        let maxIdx = 0;
+        for (let i = 1; i < targets.length; i++) {
+            if (targets[i] > targets[maxIdx]) maxIdx = i;
+        }
+        rounded[maxIdx] = window.roundToTwo(rounded[maxIdx] + diff);
+    }
+
+    otherInputs.forEach((inp, idx) => {
+        inp.value = rounded[idx];
+    });
+
+    if (typeof snapshotWeightsFromCurrentPage === 'function') {
+        snapshotWeightsFromCurrentPage();
+    }
+};
+
+window.finalizeOptionInput = function(input) {
+    let val = parseFloat(input.value);
+    if (isNaN(val) || val < 0) {
+        input.value = 0;
+    } else if (val > 100) {
+        input.value = 100;
+    }
+    window.handleOptionInputChange(input);
+};
+
+window.removeResponse = function(entryId, opt) {
+    const q = window.formMeta.questions.find(x => x.entry_id === entryId);
+    if (q && q.type === 'text') {
+        snapshotWeightsFromCurrentPage();
+        q.options = q.options.filter(x => x !== opt);
+        if (window.weightsByEntryId[entryId]) {
+            delete window.weightsByEntryId[entryId][opt];
+        }
+        window.normalizeQuestionWeights(entryId);
+        showPage(window.currentPageIndex);
+    }
+};
+
 document.getElementById('fillFormBtn').addEventListener('click', async () => {
     const numResponses = parseInt(document.getElementById('numResponses').value);
     if (isNaN(numResponses) || numResponses < 1) {
@@ -260,19 +304,16 @@ document.getElementById('fillFormBtn').addEventListener('click', async () => {
 
     snapshotWeightsFromCurrentPage();
 
-    // Validate percentages
-    const issues = validatePercentages();
-    if (issues.length > 0) {
-        showError('Fix percentages before continuing:\n' + issues.join('\n'));
-        return;
+    // Automatically normalize all question option weights to ensure they sum to exactly 100%
+    const questions = window.formMeta.questions;
+    for (const q of questions) {
+        window.normalizeQuestionWeights(q.entry_id);
     }
 
-    // Switch to Progress phase on same screen
     document.getElementById('inputPhase').style.display = 'none';
     document.getElementById('progressPhase').style.display = 'block';
 
     const weights = { ...window.weightsByEntryId };
-    const questions = window.formMeta.questions;
     for (const q of questions) {
         const entryId = q.entry_id;
         const card = document.querySelector(`.question-card[data-entry-id="${entryId}"]`);
@@ -292,6 +333,11 @@ document.getElementById('fillFormBtn').addEventListener('click', async () => {
     const progressBar = document.getElementById('progressBar');
     const progressText = document.getElementById('progressText');
 
+    const hiddenFields = { ...(window.formMeta.hidden_fields || {}) };
+    if (window.formPages && window.formPages.length > 0) {
+        hiddenFields.pageHistory = Array.from({ length: window.formPages.length }, (_, i) => i).join(',');
+    }
+
     try {
         const response = await fetch('/generate', {
             method: 'POST',
@@ -300,7 +346,7 @@ document.getElementById('fillFormBtn').addEventListener('click', async () => {
                 num_responses: numResponses,
                 weights: weights,
                 questions: window.formMeta.questions,
-                hidden_fields: window.formMeta.hidden_fields,
+                hidden_fields: hiddenFields,
                 action_url: window.formMeta.action_url,
                 form_url: document.getElementById('formUrl').value.trim()
             })
@@ -327,10 +373,12 @@ document.getElementById('fillFormBtn').addEventListener('click', async () => {
                         progressBar.style.width = `${perc}%`;
                         progressText.innerText = `Success: ${part.successful} / Failed: ${part.total - part.successful}`;
                     } else if (part.type === 'complete') {
-                        // Switch to Result phase
                         document.getElementById('progressPhase').style.display = 'none';
                         document.getElementById('resultPhase').style.display = 'block';
                         document.getElementById('summaryContent').innerText = part.summary;
+                        if (typeof window.renderDashboard === 'function') {
+                            window.renderDashboard(part);
+                        }
                         
                         document.getElementById('downloadResponsesBtn').onclick = () => {
                             window.location.href = `/download/${part.job_id}?type=responses`;
@@ -338,6 +386,12 @@ document.getElementById('fillFormBtn').addEventListener('click', async () => {
                         document.getElementById('downloadStatsBtn').onclick = () => {
                             window.location.href = `/download/${part.job_id}?type=stats`;
                         };
+                        const schemaResultBtn = document.getElementById('downloadSchemaResultBtn');
+                        if (schemaResultBtn) {
+                            schemaResultBtn.onclick = () => {
+                                window.downloadFormSchemaJson();
+                            };
+                        }
                     }
                 } catch (e) {}
             }
@@ -349,20 +403,70 @@ document.getElementById('fillFormBtn').addEventListener('click', async () => {
     }
 });
 
-function showLoading(show) {
-    document.getElementById('loading').style.display = show ? 'block' : 'none';
-    document.getElementById('parseBtn').disabled = show;
-}
+window.generateFormSchemaJson = function() {
+    const questions = window.formMeta.questions || [];
+    const formattedQuestions = questions.map((q, idx) => {
+        const item = {
+            serial_number: idx + 1,
+            label: q.label || q.text || '',
+            entry: q.entry || q.entry_id || '',
+            type: q.type_name || (q.type === 'linear' ? 'Linear scale' : (q.type === 'checkbox' ? 'Checkboxes' : (q.type === 'radio' ? 'Multiple choice' : 'Short answer'))),
+            required: typeof q.required === 'boolean' ? q.required : false,
+            description: q.description || ''
+        };
 
-function showError(msg) {
-    const errDiv = document.getElementById('error');
-    errDiv.innerText = msg;
-    errDiv.style.display = 'block';
-}
-function hideError() { document.getElementById('error').style.display = 'none'; }
-function showWarning(msg) {
-    const warnDiv = document.getElementById('signinWarning');
-    warnDiv.innerText = msg;
-    warnDiv.style.display = 'block';
-}
-function hideWarning() { document.getElementById('signinWarning').style.display = 'none'; }
+        if (q.options && q.options.length > 0) {
+            item.options = q.options.map(opt => window.formatOptionLabel ? window.formatOptionLabel(opt) : opt);
+        } else if (q.type === 'linear') {
+            item.scale = {
+                min: q.min,
+                max: q.max,
+                left_label: q.left_label || '',
+                right_label: q.right_label || ''
+            };
+        }
+
+        item.page = (typeof q.page === 'number' ? q.page : 0) + 1;
+        return item;
+    });
+
+    return {
+        form_title: window.formMeta.form_title || 'Google Form',
+        form_description: window.formMeta.form_description || '',
+        form_url: window.formMeta.form_url || document.getElementById('formUrl').value.trim(),
+        action_url: window.formMeta.action_url || '',
+        total_questions: formattedQuestions.length,
+        total_pages: (window.formPages && window.formPages.length) ? window.formPages.length : 1,
+        questions: formattedQuestions
+    };
+};
+
+window.downloadFormSchemaJson = function() {
+    const schemaData = window.generateFormSchemaJson();
+    if (!schemaData.questions || schemaData.questions.length === 0) {
+        showError('No form questions found to export. Please parse a form first.');
+        return;
+    }
+    const safeTitle = (schemaData.form_title || 'form_schema').replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase();
+    const filename = `${safeTitle || 'form'}_schema.json`;
+
+    const blob = new Blob([JSON.stringify(schemaData, null, 2)], { type: 'application/json;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+};
+
+// Bind schema download buttons on DOM ready or click
+['downloadSchemaConfigBtn', 'downloadSchemaInputBtn', 'downloadSchemaResultBtn'].forEach(btnId => {
+    const btn = document.getElementById(btnId);
+    if (btn) {
+        btn.addEventListener('click', () => {
+            window.downloadFormSchemaJson();
+        });
+    }
+});
